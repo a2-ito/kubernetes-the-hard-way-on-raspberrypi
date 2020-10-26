@@ -40,3 +40,20 @@ vi .ssh/authorized_keys
 ```
 passwd
 ```
+
+## Edit hosts
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+  sudo sh -c \"echo 192.168.11.21 rasp-worker-1 >> /etc/hosts\"
+  sudo sh -c \"echo 192.168.11.22 rasp-worker-2 >> /etc/hosts\"
+  sudo sh -c \"echo 192.168.11.23 rasp-worker-3 >> /etc/hosts\"
+  "
+done
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    cat /etc/hosts
+  "
+done
+```
+

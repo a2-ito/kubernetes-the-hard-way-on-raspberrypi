@@ -364,6 +364,24 @@ done
 ```
 kubectl run --kubeconfig admin.kubeconfig \
   --generator=run-pod/v1 busybox --image=busybox:1.28 --command -- sleep 3600
+kubectl exec -it busybox -- sh
+```
+
+```
 kubectl get pod --kubeconfig admin.kubeconfig
 kubectl delete pod busybox --kubeconfig admin.kubeconfig
 ```
+
+```
+kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod \
+  --overrides='{"spec": { "nodeSelector": {"kubernetes.io/hostname": "rasp-worker-1"}}}' \
+  -- nslookup kubernetes
+kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod \
+  --overrides='{"spec": { "nodeSelector": {"kubernetes.io/hostname": "rasp-worker-3"}}}' \
+  -- nslookup kubernetes
+kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod \
+  --overrides='{"spec": { "nodeSelector": {"kubernetes.io/hostname": "rasp-worker-3"}}}' \
+  -- nslookup kubernetes
+```
+
+

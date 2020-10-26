@@ -5,7 +5,15 @@ kubectl apply -f https://storage.googleapis.com/kubernetes-the-hard-way/coredns.
 ```
 ### Verification
 ```
-kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod -- nslookup kubernetes
+kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod \
+  --overrides='{"spec": { "nodeSelector": {"kubernetes.io/hostname": "rasp-worker-1"}}}' \
+  -- nslookup kubernetes
+kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod \
+  --overrides='{"spec": { "nodeSelector": {"kubernetes.io/hostname": "rasp-worker-2"}}}' \
+  -- nslookup kubernetes
+kubectl run --image=busybox:1.28 --rm --restart=Never -i testpod \
+  --overrides='{"spec": { "nodeSelector": {"kubernetes.io/hostname": "rasp-worker-3"}}}' \
+  -- nslookup kubernetes
 ```
 
 ```
