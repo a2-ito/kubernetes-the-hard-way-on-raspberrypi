@@ -114,8 +114,8 @@ kubectl config use-context default --kubeconfig=admin.kubeconfig
 ## Copy Configuration Files to Master
 ```
 for instance in 1; do
-  scp ./keys/kube-controller-manager.kubeconfig \
-      ./keys/kube-scheduler.kubeconfig rasp-k8s-master-${instance}:~
+  scp ./kube-controller-manager.kubeconfig \
+      ./kube-scheduler.kubeconfig rasp-k8s-master-${instance}:~
 done
 ```
 
