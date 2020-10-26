@@ -122,7 +122,7 @@ done
 ## Copy Configuration Files to Worker
 ```
 for instance in 1 2 3; do
-  scp ./keys/kube-proxy.kubeconfig ./keys/admin.kubeconfig rasp-k8s-master-${instance}:~
+  scp ./kube-proxy.kubeconfig ./admin.kubeconfig rasp-k8s-master-${instance}:~
 done
 ```
 
