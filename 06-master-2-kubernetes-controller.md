@@ -88,7 +88,7 @@ ExecStart=/usr/local/bin/kube-apiserver \\
   --kubelet-client-certificate=/var/lib/kubernetes/kubernetes.pem \\
   --kubelet-client-key=/var/lib/kubernetes/kubernetes-key.pem \\
   --kubelet-https=true \\
-  --runtime-config=api/all \\
+  --runtime-config='api/all=true' \\
   --service-account-key-file=/var/lib/kubernetes/service-account.pem \\
   --service-cluster-ip-range=10.32.0.0/24 \\
   --service-node-port-range=30000-32767 \\
@@ -107,6 +107,24 @@ EOF
 done
 ```
 
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    sudo systemctl daemon-reload
+    sudo systemctl enable kube-apiserver
+    sudo systemctl start kube-apiserver &
+  "
+done
+```
+
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    sudo systemctl status kube-apiserver -l
+  "
+done
+```
+
 ### Configure the Kubernetes Controller Manager
 ```
 for instance in 1; do
@@ -115,7 +133,7 @@ done
 ```
 #### Create the ```kube-controller-manager.service``` systemd unit file
 ```
-for instance in 1 2 3; do
+for instance in 1; do
   INTERNAL_IP=192.168.11.14
   cat << EOF | tee kube-controller-manager.service
 [Unit]
@@ -146,6 +164,40 @@ EOF
   rm kube-controller-manager.service
   ssh rasp-k8s-master-${instance} "\
      sudo mv kube-controller-manager.service /etc/systemd/system/
+  "
+done
+```
+
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    kube-controller-manager --version
+  "
+done
+```
+
+```
+for instance in 1; do
+  ssh rasp-k8s-ma ter-${instance} "\
+    sudo systemctl daemon-reload
+    sudo systemctl enable kube-controller-manager
+    sudo systemctl start kube-controller-manager &
+  "
+done
+```
+
+#### Verification
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    sudo systemctl status kube-controller-manager -l
+  "
+done
+```
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    kubectl get componentstatuses
   "
 done
 ```
