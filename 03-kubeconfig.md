@@ -115,7 +115,9 @@ kubectl config use-context default --kubeconfig=admin.kubeconfig
 ```
 for instance in 1; do
   scp ./kube-controller-manager.kubeconfig \
-      ./kube-scheduler.kubeconfig rasp-k8s-master-${instance}:~
+      ./kube-scheduler.kubeconfig \
+      ./admin.kubeconfig \
+      rasp-k8s-master-${instance}:~
 done
 ```
 

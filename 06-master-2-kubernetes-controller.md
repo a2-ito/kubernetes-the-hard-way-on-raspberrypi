@@ -178,7 +178,7 @@ done
 
 ```
 for instance in 1; do
-  ssh rasp-k8s-ma ter-${instance} "\
+  ssh rasp-k8s-master-${instance} "\
     sudo systemctl daemon-reload
     sudo systemctl enable kube-controller-manager
     sudo systemctl start kube-controller-manager &
@@ -203,13 +203,7 @@ done
 ```
 
 ### Configure the Kubernetes Scheduler
-```
-for instance in 1; do
-  ssh rasp-k8s-master-${instance} "\
-    sudo mv kube-scheduler.kubeconfig /var/lib/kubernetes/
-  "
-done
-```
+
 #### Create the ```kube-scheduler.yaml``` configuration file
 ```
 cat <<EOF | tee kube-scheduler.yaml
@@ -220,16 +214,6 @@ clientConnection:
 leaderElection:
   leaderElect: true
 EOF
-for instance in 1; do
-  scp kube-scheduler.yaml rasp-k8s-master-${instance}:~
-  ssh rasp-k8s-master-${instance} "\
-    sudo mv kube-scheduler.yaml /etc/kubernetes/config/
-  "
-done
-rm kube-scheduler.yaml
-```
-#### Create the ```kube-scheduler.service``` systemd unit file
-```
 cat <<EOF | tee kube-scheduler.service
 [Unit]
 Description=Kubernetes Scheduler
@@ -246,23 +230,36 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 for instance in 1; do
-  scp kube-scheduler.service rasp-k8s-master-${instance}:~
+  scp kube-scheduler.yaml kube-scheduler.service kube-scheduler.kubeconfig rasp-k8s-master-${instance}:~
   ssh rasp-k8s-master-${instance} "\
     sudo mv kube-scheduler.service /etc/systemd/system/
+    sudo mv kube-scheduler.kubeconfig /var/lib/kubernetes/
+    sudo mv kube-scheduler.yaml /etc/kubernetes/config/
   "
 done
-rm kube-scheduler.service
+rm kube-scheduler.service kube-scheduler.yaml
 ```
+
 #### Start the Controller Services
 ```
 for instance in 1; do
   ssh rasp-k8s-master-${instance} "\
     sudo systemctl daemon-reload
-    sudo systemctl enable kube-apiserver kube-controller-manager kube-scheduler
-    sudo systemctl start kube-apiserver kube-controller-manager kube-scheduler &
+    sudo systemctl enable kube-scheduler
+    sudo systemctl start kube-scheduler &
   "
 done
 ```
+```
+for instance in 1; do
+  ssh rasp-k8s-master-${instance} "\
+    sudo systemctl status kube-scheduler -l
+  "
+done
+```
+
+
+
 ### Enable HTTP Health Checks
 ```
 sudo apt-get update
