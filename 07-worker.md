@@ -1,4 +1,15 @@
 # Kubernetes the hard way
+
+## Enable Memory Subsysem of cgroup
+```
+vi /boot/firmware/cmdline.txt
+```
+
+You need to add a following setting.
+```
+cgroup_memory=1 cgroup_enable=memory
+```
+
 ## Copy Kubeconfigs
 ```
 for instance in 1 2 3; do
@@ -49,20 +60,37 @@ K8S_VER=v1.18.0
 K8S_ARCH=arm
 mkdir bin-for-workers
 wget -q --show-progress --https-only --timestamping -P ./bin-for-workers \
-  http://mirror.archlinuxarm.org/arm/community/containerd-1.4.1-1-arm.pkg.tar.xz \
-  https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.19.0/crictl-v1.19.0-linux-arm.tar.gz \
-  https://github.com/containernetworking/plugins/releases/download/v0.8.7/cni-plugins-linux-arm-v0.8.7.tgz \
+  https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.18.0/crictl-v1.18.0-linux-arm.tar.gz \
+  https://github.com/containernetworking/plugins/releases/download/v0.8.6/cni-plugins-linux-arm-v0.8.6.tgz \
   https://storage.googleapis.com/kubernetes-release/release/$K8S_VER/bin/linux/$K8S_ARCH/kubectl \
   https://storage.googleapis.com/kubernetes-release/release/$K8S_VER/bin/linux/$K8S_ARCH/kube-proxy \
   https://storage.googleapis.com/kubernetes-release/release/$K8S_VER/bin/linux/$K8S_ARCH/kubelet
 for instance in 1 2 3; do
   ssh rasp-worker-${instance} "\
-    curl -sSL http://get.docker.com  | sh
-    sudo usermod -aG docker pi
+    sudo apt -y install containerd runc
   "
   scp ./bin-for-workers/* rasp-worker-${instance}:~
 done
 ```
+
+```
+K8S_VER=v1.18.0
+K8S_ARCH=arm64
+mkdir bin-for-workers
+wget -q --show-progress --https-only --timestamping -P ./bin-for-workers \
+  https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.18.0/crictl-v1.18.0-linux-arm64.tar.gz \
+  https://github.com/containernetworking/plugins/releases/download/v0.8.6/cni-plugins-linux-arm64-v0.8.6.tgz \
+  https://storage.googleapis.com/kubernetes-release/release/$K8S_VER/bin/linux/$K8S_ARCH/kubectl \
+  https://storage.googleapis.com/kubernetes-release/release/$K8S_VER/bin/linux/$K8S_ARCH/kube-proxy \
+  https://storage.googleapis.com/kubernetes-release/release/$K8S_VER/bin/linux/$K8S_ARCH/kubelet
+for instance in 1 2 3; do
+  ssh rasp-worker-${instance} "\
+    sudo apt -y install containerd runc
+  "
+  scp ./bin-for-workers/* rasp-worker-${instance}:~
+done
+```
+
 
 ### Create the installation directories
 ```
@@ -75,7 +103,8 @@ for instance in 1 2 3; do
       /var/lib/kube-proxy \
       /var/lib/kubernetes \
       /var/run/kubernetes \
-      /var/log/kubernetes
+      /var/log/kubernetes \
+      /etc/containerd
     "
 done
 ```
@@ -83,10 +112,8 @@ done
 ```
 for instance in 1 2 3; do
   ssh rasp-worker-${instance} "\
-    tar Jxf containerd-1.4.1-1-arm.pkg.tar.xz
-    sudo tar -xvf cni-plugins-linux-arm-v0.8.7.tgz -C /opt/cni/bin/
-    sudo mv usr/bin/* /usr/local/bin/
-    tar xzf crictl-v1.19.0-linux-arm.tar.gz
+    sudo tar -xvf cni-plugins-linux-arm64-v0.8.6.tgz -C /opt/cni/bin/
+    tar xzf crictl-v1.18.0-linux-arm64.tar.gz
     chmod +x crictl kubectl kube-proxy kubelet
     sudo mv crictl kubectl kube-proxy kubelet /usr/local/bin/
   "
@@ -118,10 +145,153 @@ done
 
 </details>
 
-## Configure CNI Networking
+## Configure the Kubelet
+
+```
+for instance in 1 2 3; do
+  ssh rasp-worker-${instance} "\
+    sudo mv rasp-worker-${instance}-key.pem rasp-worker-${instance}.pem /var/lib/kubelet/
+    sudo mv rasp-worker-${instance}.kubeconfig /var/lib/kubelet/kubeconfig
+    sudo mv ca.pem /var/lib/kubernetes/
+  "
+done
+```
+
+### Option 1. Docker
+<details>
+
+#### CNI
+
+```
+for instance in 1 2 3; do
+  ssh rasp-worker-${instance} "\
+    sudo mkdir -p /opt/cni
+    wget https://raw.githubusercontent.com/robertojrojas/kubernetes-the-hard-way-raspberry-pi/master/cni/cni.tar.gz
+    sudo tar -xvf cni.tar.gz -C /opt/cni
+  "
+done
+```
+
+### Create the ```kubelet-config.yaml``` configurations file
+```
+for instance in 1 2 3; do
+POD_CIDR=10.200.${instance}.0/24
+cat <<EOF | tee kubelet-config.yaml
+kind: KubeletConfiguration
+apiVersion: kubelet.config.k8s.io/v1beta1
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+  x509:
+    clientCAFile: "/var/lib/kubernetes/ca.pem"
+authorization:
+  mode: Webhook
+clusterDomain: "cluster.local"
+clusterDNS:
+  - "10.32.0.10"
+podCIDR: "${POD_CIDR}"
+#resolvConf: "/run/systemd/resolve/resolv.conf"
+runtimeRequestTimeout: "15m"
+tlsCertFile: "/var/lib/kubelet/rasp-worker-${instance}.pem"
+tlsPrivateKeyFile: "/var/lib/kubelet/rasp-worker-${instance}-key.pem"
+EOF
+  scp kubelet-config.yaml rasp-worker-${instance}:~
+  ssh rasp-worker-${instance} "\
+    sudo mv kubelet-config.yaml /var/lib/kubelet/
+  "
+rm kubelet-config.yaml
+done
+```
+
+#### Configure kubelet with Docker
+```
+cat > kubelet.service <<"EOF"
+[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/usr/local/bin/kubelet \
+  --config=/var/lib/kubelet/kubelet-config.yaml \
+  --cloud-provider= \
+  --cluster-dns=10.32.0.10 \
+  --cluster-domain=cluster.local \
+  --container-runtime=docker \
+  --docker=unix:///var/run/docker.sock \
+  --network-plugin=kubenet \
+  --kubeconfig=/var/lib/kubelet/kubeconfig \
+  --serialize-image-pulls=false \
+  --v=2
+  
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+for instance in 1 2 3; do
+  scp kubelet.service rasp-worker-${instance}:~
+  ssh rasp-worker-${instance} "\
+    sudo mv kubelet.service /etc/systemd/system/
+  "
+done
+rm kubelet.service
+```
+
+</details>
+
+### Option 2. CNI
+
 <details>
 
 ### Retrieve the Pod CIDR range for the current compute instance
+
+```
+cat << EOF | tee config.toml
+[plugins]
+  [plugins.cri.containerd]
+    snapshotter = "overlayfs"
+    [plugins.cri.containerd.default_runtime]
+      runtime_type = "io.containerd.runtime.v1.linux"
+      runtime_engine = "/usr/sbin/runc"
+      runtime_root = ""
+EOF
+for instance in 1 2 3; do
+  scp config.toml rasp-worker-${instance}:~
+  ssh rasp-worker-${instance} "\
+    sudo mv config.toml /etc/containerd/
+  "
+done
+```
+
+```
+for instance in 1 2 3; do
+  ssh rasp-worker-${instance} "\
+    sudo systemctl start containerd
+    sudo systemctl enable containerd
+  "
+done
+```
+
+### Install CNI
+```
+for instance in 1 2 3; do
+  ssh rasp-worker-${instance} "\
+    sudo mkdir -p \
+      /etc/cni/net.d \
+      /opt/cni/bin
+    wget -q --show-progress --https-only --timestamping -P ./bin-for-workers \
+      https://github.com/containernetworking/plugins/releases/download/v0.8.7/cni-plugins-linux-arm-v0.8.7.tgz 
+    sudo tar -xvf cni-plugins-linux-arm-v0.8.7.tgz -C /opt/cni/bin/
+    /opt/cni/bin/loopback version
+  "
+done
+```
+
 ### Create the ```bridge``` network configuration file
 
 ```
@@ -170,19 +340,6 @@ done
 rm 99-loopback.conf
 ```
 
-</details>
-
-## Configure the Kubelet
-```
-for instance in 1 2 3; do
-  ssh rasp-worker-${instance} "\
-    sudo mv rasp-worker-${instance}-key.pem rasp-worker-${instance}.pem /var/lib/kubelet/
-    sudo mv rasp-worker-${instance}.kubeconfig /var/lib/kubelet/kubeconfig
-    sudo mv ca.pem /var/lib/kubernetes/
-  "
-done
-```
-
 ### Create the ```kubelet-config.yaml``` configurations file
 ```
 for instance in 1 2 3; do
@@ -216,22 +373,22 @@ rm kubelet-config.yaml
 done
 ```
 
-### Create the ```kubelet.service``` systemd unit file
+#### Configure the Kubelet with CNI
 ```
 cat > kubelet.service <<"EOF"
 [Unit]
 Description=Kubernetes Kubelet
 Documentation=https://github.com/kubernetes/kubernetes
-After=docker.service
-Requires=docker.service
+After=containerd.service
+Requires=containerd.service
 
 [Service]
 ExecStart=/usr/local/bin/kubelet \
   --config=/var/lib/kubelet/kubelet-config.yaml \
-  --container-runtime=docker \
+  --container-runtime=remote \
+  --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \
   --image-pull-progress-deadline=2m \
   --kubeconfig=/var/lib/kubelet/kubeconfig \
-  --docker=unix:///var/run/docker.sock \
   --network-plugin=cni \
   --register-node=true \
   --authentication-token-webhook=true \
@@ -254,6 +411,54 @@ for instance in 1 2 3; do
 done
 rm kubelet.service
 ```
+
+</details>
+
+### Create the ```kubelet.service``` systemd unit file
+
+#### Option 2. docker
+#### Option 3. docker-2
+```
+cat > kubelet.service <<"EOF"
+[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/usr/local/bin/kubelet \
+  --allow-privileged=true \
+  --api-servers=https://10.0.1.94:6443,https://10.0.1.95:6443,https://10.0.1.96:6443 \
+  --cloud-provider= \
+  --cluster-dns=10.32.0.10 \
+  --cluster-domain=cluster.local \
+  --configure-cbr0=true \
+  --container-runtime=docker \
+  --docker=unix:///var/run/docker.sock \
+  --network-plugin=kubenet \
+  --kubeconfig=/var/lib/kubelet/kubeconfig \
+  --reconcile-cidr=true \
+  --serialize-image-pulls=false \
+  --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \
+  --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
+  --v=2
+  
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+for instance in 1 2 3; do
+  scp kubelet.service rasp-worker-${instance}:~
+  ssh rasp-worker-${instance} "\
+    sudo mv kubelet.service /etc/systemd/system/
+  "
+done
+rm kubelet.service
+```
+
 
 ### Start the Worker Services - kubelet
 ```

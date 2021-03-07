@@ -5,6 +5,7 @@ bin-for-workers/
 *.conf
 *.yaml
 *.service
+*.toml
 
 kube-apiserver
 kube-scheduler
