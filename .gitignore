@@ -1,0 +1,13 @@
+keys/
+build/
+*.kubeconfig
+bin-for-workers/
+*.conf
+*.yaml
+*.service
+*.toml
+
+kube-apiserver
+kube-scheduler
+kube-controller-manager
+kubectl
